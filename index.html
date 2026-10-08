@@ -183,8 +183,7 @@ textarea{min-height:64px;resize:vertical}
   var editingId = null;
   var tg = window.Telegram && window.Telegram.WebApp;
   var inTg = !!(tg && tg.initData);
-  var cs = (inTg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) ? tg.CloudStorage : null;
-  var cloudSnap = {};
+  var apiOn = false, apiDenied = false, inflight = 0, known = {};
   var storageMode = 'local';
   if (inTg) {
     try { tg.ready(); tg.expand(); document.documentElement.setAttribute('data-theme', tg.colorScheme === 'dark' ? 'dark' : 'light'); } catch(e){}
@@ -209,9 +208,11 @@ textarea{min-height:64px;resize:vertical}
   }
 
   function setStatus(){
-    $('status').textContent = storageMode === 'cloud'
-      ? 'Данные хранятся в вашем облаке Telegram и доступны только вам.'
-      : 'Данные хранятся только на этом устройстве. Очистка данных браузера их удалит, поэтому иногда копируйте таблицу.';
+    var t;
+    if (apiDenied) t = 'Доступ закрыт: к этой базе уже подключены два аккаунта Telegram.';
+    else if (storageMode === 'cloud') t = 'Общая база на вашем сервере: данные видны вам и компаньону и обновляются сами.';
+    else t = 'Нет связи с сервером, данные хранятся только на этом устройстве.';
+    $('status').textContent = t;
   }
 
   function readLocal(){
@@ -221,25 +222,53 @@ textarea{min-height:64px;resize:vertical}
   function writeLocal(){
     try { localStorage.setItem(KEY, JSON.stringify({items: items})); } catch(e){}
   }
-  function cloudFail(){
-    if (storageMode === 'cloud') { storageMode = 'local'; setStatus(); toast('Облако Telegram недоступно, данные остались на устройстве'); }
-  }
-  function syncCloud(){
-    if (!cs) return;
-    var next = {};
-    items.forEach(function(it){ next['ad_' + it.id] = JSON.stringify(it); });
-    Object.keys(next).forEach(function(k){
-      if (cloudSnap[k] === next[k]) return;
-      cs.setItem(k, next[k], function(err, ok){ if (err || !ok) cloudFail(); else cloudSnap[k] = next[k]; });
-    });
-    Object.keys(cloudSnap).forEach(function(k){
-      if (k in next) return;
-      cs.removeItem(k, function(err, ok){ if (!err) delete cloudSnap[k]; });
+  function api(method, path, body){
+    return fetch(path, {
+      method: method,
+      headers: {'X-Init-Data': (tg && tg.initData) || '', 'Content-Type': 'application/json'},
+      body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store'
+    }).then(function(r){
+      if (r.status === 403) apiDenied = true;
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
     });
   }
+  function done(){ inflight--; }
+  function failed(){ toast('Не удалось сохранить на сервер, попробуйте ещё раз'); }
   function persist(){
     writeLocal();
-    syncCloud();
+    if (!apiOn) return;
+    var next = {};
+    items.forEach(function(it){ next[it.id] = JSON.stringify(it); });
+    Object.keys(next).forEach(function(id){
+      if (known[id] === next[id]) return;
+      inflight++;
+      api('PUT', '/api/item', JSON.parse(next[id])).then(function(){ known[id] = next[id]; }).catch(failed).then(done);
+    });
+    Object.keys(known).forEach(function(id){
+      if (id in next) return;
+      inflight++;
+      api('DELETE', '/api/item?id=' + encodeURIComponent(id)).then(function(){ delete known[id]; }).catch(failed).then(done);
+    });
+  }
+  function pull(first){
+    if (inflight > 0) return Promise.resolve();
+    return api('GET', '/api/items').then(function(res){
+      var srv = (res && res.items) || [];
+      var migrated = false;
+      try { migrated = localStorage.getItem(KEY + '-migrated') === '1'; } catch(e){}
+      apiOn = true; storageMode = 'cloud'; apiDenied = false;
+      if (first && !srv.length && items.length && !migrated) {
+        known = {}; persist();
+      } else {
+        items = srv; known = {};
+        srv.forEach(function(it){ known[it.id] = JSON.stringify(it); });
+        writeLocal();
+      }
+      try { localStorage.setItem(KEY + '-migrated', '1'); } catch(e){}
+      setStatus(); render();
+    });
   }
 
   function render(){
@@ -390,31 +419,15 @@ textarea{min-height:64px;resize:vertical}
     if (e.target.closest('[data-edit]')) openSheet(id);
   });
 
-  // start: show local data right away, then load from Telegram cloud when available
+  // start: show local data right away, then connect to the shared server database
   items = readLocal();
   render(); setStatus();
 
-  if (cs) {
-    cs.getKeys(function(err, keys){
-      if (err) return;
-      keys = (keys || []).filter(function(k){ return k.indexOf('ad_') === 0; });
-      function finish(cloud){
-        if (cloud.length) { items = cloud; writeLocal(); }
-        storageMode = 'cloud'; setStatus();
-        if (!cloud.length && items.length) syncCloud();
-        render();
-      }
-      if (!keys.length) { finish([]); return; }
-      cs.getItems(keys, function(err2, vals){
-        if (err2) return;
-        var cloud = [];
-        keys.forEach(function(k){
-          try { var o = JSON.parse(vals[k]); if (o && o.id) { cloud.push(o); cloudSnap[k] = vals[k]; } } catch(e){}
-        });
-        finish(cloud);
-      });
-    });
-  }
+  pull(true).catch(function(){ apiOn = false; storageMode = 'local'; setStatus(); });
+  setInterval(function(){ if (apiOn && !document.hidden) pull(false).catch(function(){}); }, 20000);
+  document.addEventListener('visibilitychange', function(){
+    if (apiOn && !document.hidden) pull(false).catch(function(){});
+  });
 })();
 </script>
 </body>
