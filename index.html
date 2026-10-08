@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Учёт рекламы в канале</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1F4; --surface:#FFFFFF; --ink:#142230; --muted:#5B6B79; --line:#D6DEE4;
+  --accent:#1D7BC4; --accent-ink:#FFFFFF;
+  --good:#16794F; --good-bg:#DCF1E7; --bad:#B23838; --bad-bg:#F7E0E0; --wait:#7F6210; --wait-bg:#F4EAC8;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1A24; --surface:#17252F; --ink:#E7EEF3; --muted:#93A3B1; --line:#27384A;
+    --accent:#4AA3E8; --accent-ink:#06121C;
+    --good:#58D19A; --good-bg:#15382B; --bad:#F08A8A; --bad-bg:#3E2024; --wait:#E5C467; --wait-bg:#3A3118;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1A24; --surface:#17252F; --ink:#E7EEF3; --muted:#93A3B1; --line:#27384A;
+  --accent:#4AA3E8; --accent-ink:#06121C;
+  --good:#58D19A; --good-bg:#15382B; --bad:#F08A8A; --bad-bg:#3E2024; --wait:#E5C467; --wait-bg:#3A3118;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Onest",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%}
+.wrap{max-width:560px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:22px;line-height:1.2;margin:4px 0 14px;font-weight:700;letter-spacing:-.01em}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 9px}
+.stat b{display:block;font-size:19px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+.stat span{font-size:12.5px;color:var(--muted)}
+.stat.key{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.stat.key span{color:inherit;opacity:.85}
+
+.bar{display:flex;gap:8px;margin-bottom:14px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:11px 14px;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);flex:1}
+.btn.danger{color:var(--bad)}
+.btn.small{padding:8px 11px;font-size:14px;font-weight:500}
+select.btn{appearance:none;-webkit-appearance:none;padding-right:12px;font-weight:500}
+
+.card{background:var(--surface);border:1px solid var(--line);border-left-width:5px;border-radius:12px;padding:12px 12px 10px;margin-bottom:10px}
+.card.good{border-left-color:var(--good)} .card.bad{border-left-color:var(--bad)} .card.mid{border-left-color:var(--line)}
+.top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.name{font-weight:600;font-size:17px;overflow-wrap:anywhere}
+.meta{font-size:13px;color:var(--muted);margin-top:2px}
+.price{font-weight:700;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px;margin:10px 0}
+.grid div{font-size:13px;color:var(--muted)}
+.grid b{display:block;font-size:16px;color:var(--ink);font-weight:600}
+.grid b.good{color:var(--good)} .grid b.bad{color:var(--bad)}
+.note{font-size:13.5px;color:var(--muted);margin:0 0 8px;overflow-wrap:anywhere}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 11px;font-size:13.5px}
+.chip[aria-pressed="true"].repeat{background:var(--good-bg);border-color:var(--good);color:var(--good);font-weight:600}
+.chip[aria-pressed="true"].skip{background:var(--bad-bg);border-color:var(--bad);color:var(--bad);font-weight:600}
+.chip[aria-pressed="true"].wait{background:var(--wait-bg);border-color:var(--wait);color:var(--wait);font-weight:600}
+.spacer{flex:1}
+.link{background:none;border:0;color:var(--accent);padding:6px 4px;font-size:14px;font-weight:500}
+
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:22px 16px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
+.status{font-size:12.5px;color:var(--muted);text-align:center;margin-top:14px}
+
+.overlay{position:fixed;inset:0;background:rgba(5,12,18,.5);display:none;align-items:flex-end;justify-content:center;z-index:10}
+.overlay.open{display:flex}
+.sheet{background:var(--surface);width:100%;max-width:560px;max-height:92dvh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 14px calc(18px + env(safe-area-inset-bottom,0px))}
+.sheet h2{font-size:19px;margin:0 0 12px}
+label{display:block;font-size:13.5px;color:var(--muted);margin:10px 0 4px}
+input,select.field,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:16px}
+textarea{min-height:64px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:4px}
+.actions{display:flex;gap:8px;margin-top:16px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-size:14px;z-index:20;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion: reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Учёт рекламы в канале</h1>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="bar">
+    <button class="btn primary" id="addBtn" type="button">Добавить закупку</button>
+    <select class="btn" id="sortSel" aria-label="Сортировка">
+      <option value="date">Сначала новые</option>
+      <option value="cps">Дешёвый подписчик</option>
+    </select>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="row" style="justify-content:center;margin-top:8px">
+    <button class="btn small" id="exportBtn" type="button">Выгрузить таблицу (CSV)</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet">
+    <h2 id="sheetTitle">Новая закупка</h2>
+
+    <label for="fChannel">Канал или блогер</label>
+    <input id="fChannel" type="text" placeholder="@name или название" autocomplete="off">
+
+    <div class="two">
+      <div>
+        <label for="fPrice">Цена, ₽</label>
+        <input id="fPrice" type="number" inputmode="decimal" min="0" placeholder="5000">
+      </div>
+      <div>
+        <label for="fDate">Дата выхода</label>
+        <input id="fDate" type="date">
+      </div>
+    </div>
+
+    <label for="fFormat">Формат</label>
+    <input id="fFormat" type="text" placeholder="Пост в ленте, 24 часа" autocomplete="off">
+
+    <div class="two">
+      <div>
+        <label for="fReach">Охват за 24 часа</label>
+        <input id="fReach" type="number" inputmode="numeric" min="0" placeholder="3200">
+      </div>
+      <div>
+        <label for="fJoined">Пришло подписчиков</label>
+        <input id="fJoined" type="number" inputmode="numeric" min="0" placeholder="140">
+      </div>
+    </div>
+    <div class="hint">Охват и подписчиков можно заполнить позже, когда пост отработает.</div>
+
+    <div class="two">
+      <div>
+        <label for="fLeft">Ушло за 7 дней</label>
+        <input id="fLeft" type="number" inputmode="numeric" min="0" placeholder="0">
+      </div>
+      <div>
+        <label for="fVerdict">Решение</label>
+        <select id="fVerdict" class="field">
+          <option value="wait">Ждём данные</option>
+          <option value="repeat">Повторять</option>
+          <option value="skip">Больше не брать</option>
+        </select>
+      </div>
+    </div>
+
+    <label for="fInvite">Пригласительная ссылка этой закупки</label>
+    <input id="fInvite" type="text" placeholder="t.me/+..." autocomplete="off">
+
+    <label for="fNote">Заметка</label>
+    <textarea id="fNote" maxlength="600" placeholder="Договорились через кого, условия, что сработало"></textarea>
+
+    <div class="actions">
+      <button class="btn primary" id="saveBtn" type="button">Сохранить</button>
+      <button class="btn" id="cancelBtn" type="button">Отмена</button>
+      <button class="btn danger" id="delBtn" type="button" style="display:none">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+  var KEY = 'tg-ad-tracker-v1';
+  var items = [];
+  var editingId = null;
+  var tg = window.Telegram && window.Telegram.WebApp;
+  var inTg = !!(tg && tg.initData);
+  var cs = (inTg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) ? tg.CloudStorage : null;
+  var cloudSnap = {};
+  var storageMode = 'local';
+  if (inTg) {
+    try { tg.ready(); tg.expand(); document.documentElement.setAttribute('data-theme', tg.colorScheme === 'dark' ? 'dark' : 'light'); } catch(e){}
+  }
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function num(v){ if (v === '' || v == null) return null; var n = Number(v); return isFinite(n) ? n : null; }
+  function fmt(n){ return Math.round(n).toLocaleString('ru-RU'); }
+  function money(n){ return n == null ? '—' : fmt(n) + ' ₽'; }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function fdate(s){ if(!s) return ''; var p = s.split('-'); return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : s; }
+  function uid(){ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+  function subs(it){ return it.joined == null ? null : Math.max(it.joined - (it.left || 0), 0); }
+  function cps(it){ var s = subs(it); return (s && s > 0) ? it.price / s : null; }
+  function cpm(it){ return (it.reach && it.reach > 0) ? it.price / it.reach * 1000 : null; }
+
+  function toast(msg){
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  function setStatus(){
+    $('status').textContent = storageMode === 'cloud'
+      ? 'Данные хранятся в вашем облаке Telegram и доступны только вам.'
+      : 'Данные хранятся только на этом устройстве. Очистка данных браузера их удалит, поэтому иногда копируйте таблицу.';
+  }
+
+  function readLocal(){
+    try { var raw = localStorage.getItem(KEY); var p = raw ? JSON.parse(raw) : null; return (p && Array.isArray(p.items)) ? p.items : []; }
+    catch(e){ return []; }
+  }
+  function writeLocal(){
+    try { localStorage.setItem(KEY, JSON.stringify({items: items})); } catch(e){}
+  }
+  function cloudFail(){
+    if (storageMode === 'cloud') { storageMode = 'local'; setStatus(); toast('Облако Telegram недоступно, данные остались на устройстве'); }
+  }
+  function syncCloud(){
+    if (!cs) return;
+    var next = {};
+    items.forEach(function(it){ next['ad_' + it.id] = JSON.stringify(it); });
+    Object.keys(next).forEach(function(k){
+      if (cloudSnap[k] === next[k]) return;
+      cs.setItem(k, next[k], function(err, ok){ if (err || !ok) cloudFail(); else cloudSnap[k] = next[k]; });
+    });
+    Object.keys(cloudSnap).forEach(function(k){
+      if (k in next) return;
+      cs.removeItem(k, function(err, ok){ if (!err) delete cloudSnap[k]; });
+    });
+  }
+  function persist(){
+    writeLocal();
+    syncCloud();
+  }
+
+  function render(){
+    var withData = items.filter(function(i){ return subs(i) != null && subs(i) > 0; });
+    var spentAll = items.reduce(function(a,i){ return a + i.price; }, 0);
+    var spentData = withData.reduce(function(a,i){ return a + i.price; }, 0);
+    var subsAll = items.reduce(function(a,i){ return a + (subs(i) || 0); }, 0);
+    var avg = subsAll > 0 && spentData > 0 ? spentData / subsAll : null;
+
+    $('summary').innerHTML =
+      '<div class="stat"><b>' + money(spentAll) + '</b><span>потрачено</span></div>' +
+      '<div class="stat"><b>' + fmt(subsAll) + '</b><span>подписчиков</span></div>' +
+      '<div class="stat key"><b>' + money(avg) + '</b><span>цена подписчика</span></div>';
+
+    var sorted = items.slice();
+    if ($('sortSel').value === 'cps') {
+      sorted.sort(function(a,b){
+        var x = cps(a), y = cps(b);
+        if (x == null && y == null) return (b.date || '').localeCompare(a.date || '');
+        if (x == null) return 1; if (y == null) return -1; return x - y;
+      });
+    } else {
+      sorted.sort(function(a,b){ return (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id); });
+    }
+
+    if (!sorted.length) {
+      $('list').innerHTML = '<div class="empty"><b>Закупок пока нет</b>Добавьте первую: канал, цену и дату. Охват и подписчиков впишете, когда пост отработает.</div>';
+      return;
+    }
+
+    $('list').innerHTML = sorted.map(function(it){
+      var c = cps(it), m = cpm(it), s = subs(it);
+      var tone = 'mid', cls = '';
+      if (c != null && avg != null && withData.length > 1) {
+        if (c <= avg * 0.9) { tone = 'good'; cls = 'good'; }
+        else if (c >= avg * 1.1) { tone = 'bad'; cls = 'bad'; }
+      }
+      var meta = [fdate(it.date), it.format].filter(Boolean).map(esc).join(', ');
+      var joinedLine = it.joined == null ? '—' : fmt(it.joined) + (it.left ? ', ушло ' + fmt(it.left) : '');
+      return '<div class="card ' + tone + '" data-id="' + esc(it.id) + '">' +
+        '<div class="top"><div><div class="name">' + esc(it.channel) + '</div><div class="meta">' + meta + '</div></div>' +
+        '<div class="price">' + money(it.price) + '</div></div>' +
+        '<div class="grid">' +
+          '<div>Охват<b>' + (it.reach == null ? '—' : fmt(it.reach)) + '</b></div>' +
+          '<div>Пришло<b>' + joinedLine + '</b></div>' +
+          '<div>Цена подписчика<b class="' + cls + '">' + (c != null ? money(c) : (s === 0 ? 'нет прироста' : '—')) + '</b></div>' +
+          '<div>Цена тысячи охвата<b>' + (m != null ? money(m) : '—') + '</b></div>' +
+        '</div>' +
+        (it.note ? '<p class="note">' + esc(it.note) + '</p>' : '') +
+        '<div class="row">' +
+          ['repeat:Повторять','wait:Ждём','skip:Не брать'].map(function(p){
+            var k = p.split(':')[0], l = p.split(':')[1];
+            return '<button type="button" class="chip ' + k + '" data-verdict="' + k + '" aria-pressed="' + (it.verdict === k) + '">' + l + '</button>';
+          }).join('') +
+          '<span class="spacer"></span>' +
+          '<button type="button" class="link" data-edit="1">Изменить</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function openSheet(id){
+    editingId = id || null;
+    var it = id ? items.filter(function(x){ return x.id === id; })[0] : null;
+    $('sheetTitle').textContent = it ? 'Изменить закупку' : 'Новая закупка';
+    $('fChannel').value = it ? it.channel : '';
+    $('fPrice').value = it && it.price != null ? it.price : '';
+    $('fDate').value = it ? (it.date || '') : today();
+    $('fFormat').value = it ? (it.format || '') : '';
+    $('fReach').value = it && it.reach != null ? it.reach : '';
+    $('fJoined').value = it && it.joined != null ? it.joined : '';
+    $('fLeft').value = it && it.left != null ? it.left : '';
+    $('fVerdict').value = it ? (it.verdict || 'wait') : 'wait';
+    $('fInvite').value = it ? (it.invite || '') : '';
+    $('fNote').value = it ? (it.note || '') : '';
+    var del = $('delBtn'); del.style.display = it ? '' : 'none'; del.textContent = 'Удалить'; del.dataset.armed = '';
+    $('overlay').classList.add('open');
+    setTimeout(function(){ if (!it) $('fChannel').focus(); }, 50);
+  }
+  function closeSheet(){ $('overlay').classList.remove('open'); editingId = null; }
+
+  function save(){
+    var channel = $('fChannel').value.trim();
+    var price = num($('fPrice').value);
+    if (!channel) { toast('Укажите канал'); $('fChannel').focus(); return; }
+    if (price == null || price < 0) { toast('Укажите цену'); $('fPrice').focus(); return; }
+    var rec = {
+      id: editingId || uid(),
+      channel: channel, price: price, date: $('fDate').value || today(),
+      format: $('fFormat').value.trim(), reach: num($('fReach').value),
+      joined: num($('fJoined').value), left: num($('fLeft').value),
+      verdict: $('fVerdict').value, invite: $('fInvite').value.trim(), note: $('fNote').value.trim()
+    };
+    if (JSON.stringify(rec).length > 3800) { rec.note = rec.note.slice(0, 300); }
+    if (editingId) { items = items.map(function(x){ return x.id === editingId ? rec : x; }); }
+    else { items.push(rec); }
+    persist(); closeSheet(); render(); toast('Сохранено');
+  }
+
+  function csvCell(v){ var s = v == null ? '' : String(v); return '"' + s.replace(/"/g, '""') + '"'; }
+  function exportCsv(){
+    if (!items.length) { toast('Пока нечего скачивать'); return; }
+    var names = {repeat:'Повторять', wait:'Ждём данные', skip:'Больше не брать'};
+    var head = ['Дата','Канал','Формат','Цена','Охват 24ч','Пришло','Ушло за 7 дней','Цена подписчика','Цена тысячи охвата','Решение','Ссылка','Заметка'];
+    var rows = items.slice().sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); }).map(function(i){
+      var c = cps(i), m = cpm(i);
+      return [fdate(i.date), i.channel, i.format, i.price, i.reach, i.joined, i.left, c != null ? Math.round(c) : '', m != null ? Math.round(m) : '', names[i.verdict] || '', i.invite, i.note].map(csvCell).join(';');
+    });
+    var text = '\uFEFF' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
+    if (inTg) { copyFallback(text); return; }
+    try {
+      var blob = new Blob([text], {type: 'text/csv;charset=utf-8'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'reklama.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+      toast('Файл готов');
+    } catch(e){ copyFallback(text); }
+  }
+  function copyFallback(text){
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){ toast('Таблица скопирована, вставьте её в Google Таблицы'); }, function(){ toast('Скачивание недоступно в этом окне'); });
+    } else { toast('Скачивание недоступно в этом окне'); }
+  }
+
+  // events
+  $('addBtn').addEventListener('click', function(){ openSheet(null); });
+  $('sortSel').addEventListener('change', render);
+  $('saveBtn').addEventListener('click', save);
+  $('cancelBtn').addEventListener('click', closeSheet);
+  $('exportBtn').addEventListener('click', exportCsv);
+  $('overlay').addEventListener('click', function(e){ if (e.target === $('overlay')) closeSheet(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeSheet(); });
+  $('delBtn').addEventListener('click', function(){
+    var b = $('delBtn');
+    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Точно удалить?'; return; }
+    items = items.filter(function(x){ return x.id !== editingId; });
+    persist(); closeSheet(); render(); toast('Удалено');
+  });
+  $('list').addEventListener('click', function(e){
+    var card = e.target.closest('.card'); if (!card) return;
+    var id = card.getAttribute('data-id');
+    var v = e.target.closest('[data-verdict]');
+    if (v) {
+      var val = v.getAttribute('data-verdict');
+      items = items.map(function(x){ if (x.id === id) { x.verdict = val; } return x; });
+      persist(); render(); return;
+    }
+    if (e.target.closest('[data-edit]')) openSheet(id);
+  });
+
+  // start: show local data right away, then load from Telegram cloud when available
+  items = readLocal();
+  render(); setStatus();
+
+  if (cs) {
+    cs.getKeys(function(err, keys){
+      if (err) return;
+      keys = (keys || []).filter(function(k){ return k.indexOf('ad_') === 0; });
+      function finish(cloud){
+        if (cloud.length) { items = cloud; writeLocal(); }
+        storageMode = 'cloud'; setStatus();
+        if (!cloud.length && items.length) syncCloud();
+        render();
+      }
+      if (!keys.length) { finish([]); return; }
+      cs.getItems(keys, function(err2, vals){
+        if (err2) return;
+        var cloud = [];
+        keys.forEach(function(k){
+          try { var o = JSON.parse(vals[k]); if (o && o.id) { cloud.push(o); cloudSnap[k] = vals[k]; } } catch(e){}
+        });
+        finish(cloud);
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
